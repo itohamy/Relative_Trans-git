@@ -8,6 +8,8 @@ from Edge import Edge
 from FC_by_SIFT import get_FC_by_SIFT
 from Plots import open_figure,PlotImages
 import cv2
+from image_warping import warp_image
+from numpy.linalg import inv
 
 
 def main():
@@ -23,25 +25,41 @@ def main():
 
     # ---------- Compute relative transformation for each edge in E: ----------
     print("Compute relative transformations for each edge in E ...")
+    if os.path.exists('output_file'):
+        os.remove('output_file')
+    f = open('output_file','w+')
     for e in E:
         # Compute features correspondence by running SIFT:
         p, q, w = get_FC_by_SIFT(data.images[e.src], data.images[e.dst])
+
+        # center the points around zero:
+        img_sz = data.img_sz
+        p[:,0] = p[:,0] - img_sz[1] / 2
+        q[:,0] = q[:,0] - img_sz[1] / 2
+        p[:,1] = p[:,1] - img_sz[0] / 2
+        q[:,1] = q[:,1] - img_sz[0] / 2
+
         # Compute relative transformation (theta):
         E[e] = compute_LS_rigid_motion(p, q, w)
+        # Add this measurement to the output file:
+        pose = ' '.join([str(p) for p in np.reshape(E[e], (6,))])
+        f.write('EDGE_SE2 ' + str(e.src) + ' ' + str(e.dst) + ' ' + pose + '\n')
     print("Finished.")
 
     #  ---------- view the relative transformation of a few edges:
     imgs = []
     titles = []
     for i,e in enumerate(E):
-        if i in (300,301,302):
+        if i in (200,201,203):
             imgs.append(data.images[e.src])
             imgs.append(data.images[e.dst])
-            transformed_I = cv2.warpAffine(data.images[e.src], E[e], (data.img_sz[1], data.img_sz[0]), cv2.INTER_LANCZOS4)
+
+            transformed_I = warp_image(data.images[e.dst], E[e], cv2.INTER_CUBIC)
+
             imgs.append(transformed_I)
             titles.append('I1')
             titles.append('I2')
-            titles.append('theta(I1)')
+            titles.append('theta(I2)')
 
     fig1 = open_figure(1, '', (5, 3))
     PlotImages(1, 3, 3, 1, imgs, titles, 'gray', axis=False, colorbar=False)
@@ -51,13 +69,15 @@ def main():
 
 def create_E(data):
     E = dict()
-    for i in range(data.feed_size-3):
+    for i in range(data.feed_size-4):
         edge = Edge(i, i + 1)
         E[edge] = np.zeros((2,3))
         edge = Edge(i, i + 2)
         E[edge] = np.zeros((2,3))
         edge = Edge(i, i + 3)
         E[edge] = np.zeros((2,3))
+        # edge = Edge(i,i + 4)
+        # E[edge] = np.zeros((2,3))
 
     return E
 
@@ -89,14 +109,11 @@ def compute_LS_rigid_motion(p, q, w):
     upper_matrix = np.concatenate((R, np.expand_dims(t, axis=1)), axis=1)
     bottom_matrix = np.expand_dims(np.array([0,0,1]), axis=0)
     theta = np.concatenate((upper_matrix, bottom_matrix), axis=0)
-    #theta_flat = np.reshape(theta[0:2,:], (6,1))
 
-    # theta[2] = float(t_x) / 64
-    # theta[5] = float(t_y) / 64
-    # theta[1] = -rot
-    # theta[3] = rot
+    theta = inv(theta)
 
     return theta[0:2, :]
+
 
 
 if __name__ == '__main__':

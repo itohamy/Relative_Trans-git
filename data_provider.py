@@ -14,7 +14,6 @@ class DataProvider:
         print('Start loading data ...')
         self.feed_path = "Data"
 
-
         # load data from video
         makedir(self.feed_path)
         self.feed_size = extractImages(video_name, self.feed_path)
